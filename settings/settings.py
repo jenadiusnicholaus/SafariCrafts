@@ -37,11 +37,14 @@ THIRD_PARTY_APPS = [
     "rest_framework_simplejwt.token_blacklist",
     "drf_spectacular",
     "corsheaders",
-    "django_redis",
     "django_celery_beat",
     "imagekit",
     "storages",
 ]
+
+# Add django_redis only if Redis is being used
+if config("USE_REDIS", default=False, cast=bool):
+    THIRD_PARTY_APPS.append("django_redis")
 
 LOCAL_APPS = [
     "authentication",
@@ -225,25 +228,37 @@ SIMPLE_JWT = {
 CORS_ORIGIN_ALLOW_ALL = True
 CORS_ALLOW_CREDENTIALS = True
 
-# Redis Configuration
-CACHES = {
-    "default": {
-        "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": config("REDIS_URL", default="redis://localhost:6379/0"),
-        "OPTIONS": {
-            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+# Cache Configuration - Use dummy cache for development without Redis
+USE_REDIS = config("USE_REDIS", default=False, cast=bool)
+
+if USE_REDIS:
+    CACHES = {
+        "default": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": config("REDIS_URL", default="redis://localhost:6379/0"),
+            "OPTIONS": {
+                "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            }
         }
     }
-}
+    # Use Redis-based sessions when Redis is available
+    SESSION_ENGINE = "django.contrib.sessions.backends.cache"
+    SESSION_CACHE_ALIAS = "default"
+else:
+    # Use dummy cache for development
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.dummy.DummyCache",
+        }
+    }
+    # Use database-based sessions when Redis is not available
+    SESSION_ENGINE = "django.contrib.sessions.backends.db"
 
-# Session Configuration
-SESSION_ENGINE = "django.contrib.sessions.backends.cache"
-SESSION_CACHE_ALIAS = "default"
 SESSION_COOKIE_AGE = 86400  # 1 day
 
-# Celery Configuration
-CELERY_BROKER_URL = config("CELERY_BROKER_URL", default="redis://localhost:6379/0")
-CELERY_RESULT_BACKEND = config("CELERY_RESULT_BACKEND", default="redis://localhost:6379/0")
+# Celery Configuration - Optional for development
+CELERY_BROKER_URL = config("CELERY_BROKER_URL", default="")
+CELERY_RESULT_BACKEND = config("CELERY_RESULT_BACKEND", default="")
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
