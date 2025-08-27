@@ -2,7 +2,8 @@ from django.urls import path
 from .views import (
     CategoryListView, CollectionListView, CollectionDetailView,
     ArtworkListView, ArtworkDetailView, ArtworkCreateView, ArtworkUpdateView,
-    CartView, CartItemView, artwork_stats, filter_options
+    CartView, CartItemView, ArtworkLikeView, LikedArtworksView,
+    artwork_stats, filter_options
 )
 
 app_name = 'catalog'
@@ -18,8 +19,10 @@ urlpatterns = [
     # Artworks
     path('artworks/', ArtworkListView.as_view(), name='artwork_list'),
     path('artworks/create/', ArtworkCreateView.as_view(), name='artwork_create'),
+    path('artworks/liked/', LikedArtworksView.as_view(), name='liked_artworks'),
     path('artworks/<slug:slug>/', ArtworkDetailView.as_view(), name='artwork_detail'),
     path('artworks/<int:pk>/update/', ArtworkUpdateView.as_view(), name='artwork_update'),
+    path('artworks/<uuid:artwork_id>/like/', ArtworkLikeView.as_view(), name='artwork_like'),
     
     # Cart
     path('cart/', CartView.as_view(), name='cart'),

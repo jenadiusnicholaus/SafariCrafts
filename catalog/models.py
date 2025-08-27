@@ -132,6 +132,12 @@ class Artwork(models.Model):
     # Stats
     view_count = models.PositiveIntegerField(_('view count'), default=0)
     like_count = models.PositiveIntegerField(_('like count'), default=0)
+    likes = models.ManyToManyField(
+        User,
+        related_name='liked_artworks',
+        blank=True,
+        verbose_name=_('likes')
+    )
     
     class Meta:
         db_table = 'artworks'

@@ -47,7 +47,7 @@ class PayoutAdmin(admin.ModelAdmin):
             'fields': ('artist', 'amount', 'currency', 'provider', 'status')
         }),
         ('Payment Details', {
-            'fields': ('provider_ref', 'notes')
+            'fields': ('provider_ref', 'notes', 'processed_by')
         }),
         ('Timestamps', {
             'fields': ('processed_at', 'created_at', 'updated_at'),

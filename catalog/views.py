@@ -5,6 +5,7 @@ from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q, F, Min, Max
 from django.db import models
+from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
 
 from .models import Category, Collection, Artwork, Media, Cart, CartItem
@@ -233,7 +234,7 @@ class CartView(APIView):
     )
     def get(self, request):
         cart = self.get_cart()
-        serializer = CartSerializer(cart)
+        serializer = CartSerializer(cart, context={'request': request})
         return Response(serializer.data)
     
     @extend_schema(
@@ -269,7 +270,7 @@ class CartItemView(APIView):
         
         if serializer.is_valid():
             item = serializer.save()
-            return Response(CartItemSerializer(item).data, status=status.HTTP_201_CREATED)
+            return Response(CartItemSerializer(item, context={'request': request}).data, status=status.HTTP_201_CREATED)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
@@ -287,7 +288,7 @@ class CartItemView(APIView):
         except CartItem.DoesNotExist:
             return Response({'error': 'Cart item not found'}, status=status.HTTP_404_NOT_FOUND)
         
-        serializer = CartItemSerializer(item, data=request.data, partial=True)
+        serializer = CartItemSerializer(item, data=request.data, partial=True, context={'request': request})
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)
@@ -308,6 +309,98 @@ class CartItemView(APIView):
             return Response({'message': 'Item removed from cart'})
         except CartItem.DoesNotExist:
             return Response({'error': 'Cart item not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+class ArtworkLikeView(APIView):
+    """Like/Unlike artwork endpoint"""
+    
+    permission_classes = [permissions.IsAuthenticated]
+    
+    @extend_schema(
+        operation_id='like_artwork',
+        summary='Like artwork',
+        description='Like or unlike an artwork',
+        responses={
+            200: OpenApiResponse(description='Artwork liked successfully'),
+            201: OpenApiResponse(description='Artwork unliked successfully'),
+            404: OpenApiResponse(description='Artwork not found'),
+        }
+    )
+    def post(self, request, artwork_id):
+        """Like or unlike an artwork"""
+        try:
+            artwork = Artwork.objects.get(id=artwork_id, status='active')
+        except Artwork.DoesNotExist:
+            return Response(
+                {'error': 'Artwork not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Check if user already liked this artwork
+        if artwork.likes.filter(id=request.user.id).exists():
+            # Unlike the artwork
+            artwork.likes.remove(request.user)
+            artwork.like_count = F('like_count') - 1
+            artwork.save(update_fields=['like_count'])
+            
+            # Refresh from database to get the actual count
+            artwork.refresh_from_db()
+            
+            return Response(
+                {
+                    'message': 'Artwork unliked successfully',
+                    'liked': False,
+                    'like_count': artwork.like_count
+                },
+                status=status.HTTP_200_OK
+            )
+        else:
+            # Like the artwork
+            artwork.likes.add(request.user)
+            artwork.like_count = F('like_count') + 1
+            artwork.save(update_fields=['like_count'])
+            
+            # Refresh from database to get the actual count
+            artwork.refresh_from_db()
+            
+            return Response(
+                {
+                    'message': 'Artwork liked successfully',
+                    'liked': True,
+                    'like_count': artwork.like_count
+                },
+                status=status.HTTP_201_CREATED
+            )
+
+
+class LikedArtworksView(generics.ListAPIView):
+    """List user's liked artworks"""
+    
+    serializer_class = ArtworkListSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['created_at', 'price', 'title', 'view_count']
+    ordering = ['-created_at']
+    
+    def get_queryset(self):
+        """Get artworks liked by the current user"""
+        return Artwork.objects.filter(
+            likes=self.request.user,
+            status='active'
+        ).select_related(
+            'artist', 'category'
+        ).prefetch_related('media', 'collections')
+    
+    @extend_schema(
+        operation_id='list_liked_artworks',
+        summary='List liked artworks',
+        description='Get all artworks liked by the current user',
+        parameters=[
+            OpenApiParameter(name='ordering', description='Order by: created_at, -created_at, price, -price, title, -title, view_count, -view_count', required=False, type=str),
+        ]
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
 
 
 @api_view(['GET'])
