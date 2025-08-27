@@ -34,6 +34,7 @@ class Payment(models.Model):
     DPO = 'dpo'
     SELCOM = 'selcom'
     PESAPAL = 'pesapal'
+    AZAMPAY = 'azampay'
     
     PROVIDER_CHOICES = [
         (STRIPE, _('Stripe')),
@@ -41,6 +42,7 @@ class Payment(models.Model):
         (DPO, _('DPO')),
         (SELCOM, _('Selcom')),
         (PESAPAL, _('PesaPal')),
+        (AZAMPAY, _('Azam Pay')),
     ]
     
     # Payment Methods
@@ -116,25 +118,93 @@ class Payment(models.Model):
 
 
 class PaymentMethod(models.Model):
-    """Saved payment methods for users"""
+    """Payment method configuration"""
     
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='payment_methods')
-    provider = models.CharField(_('provider'), max_length=20, choices=Payment.PROVIDER_CHOICES)
-    method_type = models.CharField(_('method type'), max_length=20, choices=Payment.METHOD_CHOICES)
+    # Payment Providers
+    STRIPE = 'stripe'
+    PAYPAL = 'paypal'
+    DPO = 'dpo'
+    SELCOM = 'selcom'
+    PESAPAL = 'pesapal'
+    AZAMPAY = 'azampay'
     
-    # Payment method details (stored securely)
-    provider_method_id = models.CharField(_('provider method ID'), max_length=255)
+    PROVIDER_CHOICES = [
+        (STRIPE, _('Stripe')),
+        (PAYPAL, _('PayPal')),
+        (DPO, _('DPO')),
+        (SELCOM, _('Selcom')),
+        (PESAPAL, _('PesaPal')),
+        (AZAMPAY, _('Azam Pay')),
+    ]
     
-    # Display information
-    display_name = models.CharField(_('display name'), max_length=100)
-    last_four = models.CharField(_('last four digits'), max_length=4, blank=True)
+    # Payment Methods
+    CARD = 'card'
+    MPESA = 'mpesa'
+    AIRTEL_MONEY = 'airtel_money'
+    TIGO_PESA = 'tigo_pesa'
+    BANK_TRANSFER = 'bank_transfer'
+    PAYPAL = 'paypal'
+    
+    METHOD_CHOICES = [
+        (CARD, _('Credit/Debit Card')),
+        (MPESA, _('M-Pesa')),
+        (AIRTEL_MONEY, _('Airtel Money')),
+        (TIGO_PESA, _('Tigo Pesa')),
+        (BANK_TRANSFER, _('Bank Transfer')),
+        (PAYPAL, _('PayPal')),
+    ]
+    
+    # Basic information
+    provider = models.CharField(_('provider'), max_length=20, choices=PROVIDER_CHOICES)
+    method = models.CharField(_('method'), max_length=20, choices=METHOD_CHOICES, default=METHOD_CHOICES[0][0])
+    name = models.CharField(_('display name'), max_length=100)
+    description = models.TextField(_('description'), blank=True)
+    icon_url = models.URLField(_('icon URL'), blank=True)
+    
+    # Fees and costs
+    fee_percentage = models.DecimalField(
+        _('fee percentage'), 
+        max_digits=5, 
+        decimal_places=2, 
+        default=0.00,
+        help_text=_('Fee as percentage (e.g., 3.5 for 3.5%)')
+    )
+    fixed_fee_amount = models.DecimalField(
+        _('fixed fee amount'), 
+        max_digits=10, 
+        decimal_places=2, 
+        default=0.00,
+        help_text=_('Fixed fee amount in base currency')
+    )
+    
+    # Currency support
+    supported_currencies = models.JSONField(
+        _('supported currencies'), 
+        default=list,
+        help_text=_('List of supported currency codes (e.g., ["USD", "TZS"])')
+    )
+    
+    # Availability
+    is_active = models.BooleanField(_('is active'), default=True)
+    sort_order = models.PositiveIntegerField(_('sort order'), default=0)
+    
+    # Geographic restrictions
+    allowed_countries = models.JSONField(
+        _('allowed countries'), 
+        default=list, 
+        blank=True,
+        help_text=_('List of country codes where this method is available. Empty means all countries.')
+    )
+    
+    # Configuration
+    configuration = models.JSONField(
+        _('provider configuration'), 
+        default=dict, 
+        blank=True,
+        help_text=_('Provider-specific configuration (API keys, endpoints, etc.)')
+    )
     
     # Metadata
-    metadata = models.JSONField(_('metadata'), default=dict, blank=True)
-    
-    is_default = models.BooleanField(_('is default'), default=False)
-    is_active = models.BooleanField(_('is active'), default=True)
-    
     created_at = models.DateTimeField(_('created at'), auto_now_add=True)
     updated_at = models.DateTimeField(_('updated at'), auto_now=True)
     
@@ -142,10 +212,31 @@ class PaymentMethod(models.Model):
         db_table = 'payment_methods'
         verbose_name = _('Payment Method')
         verbose_name_plural = _('Payment Methods')
-        unique_together = ['user', 'provider_method_id']
+        ordering = ['sort_order', 'name']
+        unique_together = ['provider', 'method']
+        indexes = [
+            models.Index(fields=['provider', 'method']),
+            models.Index(fields=['is_active']),
+        ]
     
     def __str__(self):
-        return f"{self.user.email} - {self.display_name}"
+        return f"{self.name} ({self.provider})"
+    
+    def calculate_fee(self, amount):
+        """Calculate fee for given amount"""
+        percentage_fee = amount * (self.fee_percentage / 100)
+        total_fee = percentage_fee + self.fixed_fee_amount
+        return total_fee
+    
+    def is_available_in_country(self, country_code):
+        """Check if payment method is available in specific country"""
+        if not self.allowed_countries:
+            return True  # Available everywhere if no restrictions
+        return country_code in self.allowed_countries
+    
+    def supports_currency(self, currency_code):
+        """Check if payment method supports specific currency"""
+        return currency_code in self.supported_currencies
 
 
 class PaymentWebhook(models.Model):

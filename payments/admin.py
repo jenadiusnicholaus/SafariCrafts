@@ -7,17 +7,36 @@ class PaymentAdmin(admin.ModelAdmin):
     """Payment admin"""
     list_display = ('id', 'order', 'amount', 'currency', 'status', 'provider')
     list_filter = ('status', 'provider', 'currency')
-    search_fields = ('order__order_number', 'gateway_transaction_id')
+    search_fields = ('order__order_number', 'provider_ref')
     ordering = ('-created_at',)
 
 
 @admin.register(PaymentMethod)
 class PaymentMethodAdmin(admin.ModelAdmin):
-    """PaymentMethod admin"""
-    list_display = ('user', 'provider', 'is_default', 'is_active')
-    list_filter = ('provider', 'is_default', 'is_active')
-    search_fields = ('user__email', 'user__first_name', 'user__last_name')
-    ordering = ('-created_at',)
+    """System Payment Method admin"""
+    list_display = ('name', 'provider', 'method', 'is_active', 'sort_order')
+    list_filter = ('provider', 'method', 'is_active')
+    search_fields = ('name', 'provider', 'method')
+    ordering = ('sort_order', 'name')
+    
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('provider', 'method', 'name', 'description', 'icon_url')
+        }),
+        ('Fees and Costs', {
+            'fields': ('fee_percentage', 'fixed_fee_amount')
+        }),
+        ('Currency and Geography', {
+            'fields': ('supported_currencies', 'allowed_countries')
+        }),
+        ('Availability', {
+            'fields': ('is_active', 'sort_order')
+        }),
+        ('Configuration', {
+            'fields': ('configuration',),
+            'classes': ('collapse',)
+        }),
+    )
 
 
 @admin.register(PaymentWebhook)
