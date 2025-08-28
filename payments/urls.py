@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from .webhooks.azam_pay import AzamPayWebhookView, azam_pay_webhook_simple
 
 app_name = 'payments'
 
@@ -16,4 +17,8 @@ urlpatterns = [
     
     # Payment history
     path('', views.PaymentListView.as_view(), name='payment_list'),
+    
+    # Webhooks
+    path('webhooks/azam-pay/', AzamPayWebhookView.as_view(), name='azam_pay_webhook'),
+    path('webhooks/azam-pay/simple/', azam_pay_webhook_simple, name='azam_pay_webhook_simple'),
 ]

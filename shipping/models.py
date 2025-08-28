@@ -55,8 +55,10 @@ class ShippingMethod(models.Model):
         if self.max_weight and weight > self.max_weight:
             return None
         
-        cost = self.base_cost + (self.cost_per_kg * weight)
-        return cost
+        from decimal import Decimal, ROUND_HALF_UP
+        weight_decimal = Decimal(str(weight))
+        cost = self.base_cost + (self.cost_per_kg * weight_decimal)
+        return cost.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
 class Shipment(models.Model):

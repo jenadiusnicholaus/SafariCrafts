@@ -1,6 +1,8 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils.translation import gettext_lazy as _
+from django.utils import timezone
+from datetime import timedelta
 
 
 class User(AbstractUser):
@@ -78,3 +80,27 @@ class Address(models.Model):
     
     def __str__(self):
         return f"{self.line1}, {self.city}, {self.country} ({self.get_type_display()})"
+
+
+class AzamPayAuthToken(models.Model):
+    """Azam Pay authentication token storage"""
+    
+    access_token = models.TextField(_('access token'))
+    refresh_token = models.TextField(_('refresh token'), blank=True)
+    token_type = models.CharField(_('token type'), max_length=50, default='Bearer')
+    expires_in = models.DateTimeField(_('expires at'))
+    created_at = models.DateTimeField(_('created at'), auto_now_add=True)
+    updated_at = models.DateTimeField(_('updated at'), auto_now=True)
+    
+    class Meta:
+        db_table = 'azam_pay_auth_tokens'
+        verbose_name = _('Azam Pay Auth Token')
+        verbose_name_plural = _('Azam Pay Auth Tokens')
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"Token created at {self.created_at}"
+    
+    @property
+    def is_expired(self):
+        return timezone.now() > self.expires_in

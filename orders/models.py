@@ -47,6 +47,15 @@ class Order(models.Model):
     discount_amount = models.DecimalField(_('discount amount'), max_digits=10, decimal_places=2, default=0)
     total_amount = models.DecimalField(_('total amount'), max_digits=10, decimal_places=2)
     
+    # Shipping method
+    shipping_method = models.ForeignKey(
+        'shipping.ShippingMethod',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='orders',
+        verbose_name=_('shipping method')
+    )
     # Addresses (stored as JSON to preserve data even if user changes their addresses)
     shipping_address = models.JSONField(_('shipping address'))
     billing_address = models.JSONField(_('billing address'))

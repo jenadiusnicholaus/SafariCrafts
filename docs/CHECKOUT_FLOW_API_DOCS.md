@@ -3,6 +3,8 @@
 ## Overview
 The checkout flow allows authenticated users to convert their shopping cart into an order, select shipping methods, enter billing/shipping addresses, and process payments. This document provides complete integration guidance for frontend developers.
 
+**Payment Integration**: The system now uses **Azam Pay** for all Tanzanian payment methods (M-Pesa, Airtel Money, Tigo Pesa, Bank Transfers) and **PayPal** for international payments. Stripe has been removed from the default configuration.
+
 ## Checkout Flow Architecture
 
 ### 1. Multi-Step Checkout Process
@@ -24,8 +26,8 @@ The checkout flow allows authenticated users to convert their shopping cart into
 - **Address Storage**: JSON format preserves address data
 
 #### Payment Model
-- **Providers**: Stripe, PayPal, DPO, Selcom, PesaPal
-- **Methods**: Card, M-Pesa, Airtel Money, Tigo Pesa, Bank Transfer
+- **Providers**: Azam Pay, PayPal
+- **Methods**: M-Pesa, Airtel Money, Tigo Pesa, Bank Transfer (CRDB & NMB), PayPal
 - **Status Tracking**: pending → processing → completed/failed
 
 #### Shipping Model
@@ -260,42 +262,68 @@ Authorization: Bearer {your_jwt_token}
 ```json
 [
     {
-        "provider": "stripe",
-        "method": "card",
-        "name": "Credit/Debit Card",
-        "description": "Pay with Visa, MasterCard, or American Express",
-        "icon": "https://example.com/icons/card.png",
-        "fees": {
-            "percentage": 3.5,
-            "fixed_amount": "0.00"
-        },
-        "supported_currencies": ["USD", "EUR", "TZS"],
-        "is_active": true
-    },
-    {
-        "provider": "selcom",
+        "provider": "azampay",
         "method": "mpesa",
         "name": "M-Pesa",
         "description": "Pay with your M-Pesa mobile money",
         "icon": "https://example.com/icons/mpesa.png",
         "fees": {
-            "percentage": 2.0,
-            "fixed_amount": "500.00"
+            "percentage": 2.5,
+            "fixed_amount": "0.00"
         },
         "supported_currencies": ["TZS"],
         "is_active": true
     },
     {
-        "provider": "selcom",
+        "provider": "azampay",
         "method": "airtel_money",
         "name": "Airtel Money",
         "description": "Pay with your Airtel Money wallet",
         "icon": "https://example.com/icons/airtel.png",
         "fees": {
-            "percentage": 2.0,
-            "fixed_amount": "500.00"
+            "percentage": 2.5,
+            "fixed_amount": "0.00"
         },
         "supported_currencies": ["TZS"],
+        "is_active": true
+    },
+    {
+        "provider": "azampay",
+        "method": "tigo_pesa",
+        "name": "Tigo Pesa",
+        "description": "Pay with your Tigo Pesa wallet",
+        "icon": "https://example.com/icons/tigo.png",
+        "fees": {
+            "percentage": 2.5,
+            "fixed_amount": "0.00"
+        },
+        "supported_currencies": ["TZS"],
+        "is_active": true
+    },
+    {
+        "provider": "azampay",
+        "method": "bank_transfer",
+        "name": "Bank Transfer (CRDB & NMB)",
+        "description": "Pay directly from your CRDB Bank or NMB Bank account",
+        "icon": "https://example.com/icons/bank.png",
+        "fees": {
+            "percentage": 1.5,
+            "fixed_amount": "0.00"
+        },
+        "supported_currencies": ["TZS"],
+        "is_active": true
+    },
+    {
+        "provider": "paypal",
+        "method": "paypal",
+        "name": "PayPal",
+        "description": "Pay with your PayPal account (International payments)",
+        "icon": "https://example.com/icons/paypal.png",
+        "fees": {
+            "percentage": 4.0,
+            "fixed_amount": "0.00"
+        },
+        "supported_currencies": ["USD", "EUR"],
         "is_active": true
     }
 ]
@@ -321,8 +349,8 @@ Content-Type: application/json
 {
     "order_id": "550e8400-e29b-41d4-a716-446655440000",
     "payment_method": {
-        "provider": "stripe",
-        "method": "card"
+        "provider": "azampay",
+        "method": "mpesa"
     },
     "return_url": "https://yourapp.com/checkout/success",
     "cancel_url": "https://yourapp.com/checkout/cancel"
@@ -334,11 +362,11 @@ Content-Type: application/json
 {
     "payment_id": "payment_123456789",
     "status": "pending",
-    "payment_url": "https://checkout.stripe.com/session_abc123",
-    "client_secret": "pi_1234567890_secret_abc",
+    "payment_url": "https://azampay.co.tz/checkout/session_abc123",
+    "client_secret": "azam_1234567890_secret_abc",
     "provider_data": {
-        "session_id": "cs_test_abc123",
-        "publishable_key": "pk_test_123"
+        "session_id": "azam_session_abc123",
+        "reference": "AZ123456789"
     },
     "expires_at": "2025-08-27T16:30:00.000000+03:00"
 }
@@ -364,7 +392,7 @@ Content-Type: application/json
 {
     "order_id": "550e8400-e29b-41d4-a716-446655440000",
     "payment_method": {
-        "provider": "selcom",
+        "provider": "azampay",
         "method": "mpesa"
     },
     "phone_number": "+255712345678"
@@ -465,7 +493,7 @@ Authorization: Bearer {your_jwt_token}
         "id": "payment_123456789",
         "status": "completed",
         "method": "mpesa",
-        "provider": "selcom",
+        "provider": "azampay",
         "amount": "250000.00",
         "processed_at": "2025-08-27T15:35:00.000000+03:00"
     },
@@ -1279,8 +1307,8 @@ const CheckoutPage = () => {
     try {
       setLoading(true);
       
-      if (paymentMethod.method === 'card') {
-        // Handle card payment with Stripe
+      if (paymentMethod.method === 'paypal') {
+        // Handle PayPal payment
         const paymentData = {
           order_id: orderSummary.id,
           payment_method: paymentMethod,
@@ -1293,7 +1321,7 @@ const CheckoutPage = () => {
         // Redirect to payment provider
         window.location.href = payment.payment_url;
       } else {
-        // Handle mobile money payment
+        // Handle Azam Pay mobile money payment
         const phoneNumber = prompt('Enter your phone number for mobile payment:');
         
         const paymentData = {

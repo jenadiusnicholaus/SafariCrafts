@@ -23,6 +23,10 @@ class Migration(migrations.Migration):
             old_name="display_name",
             new_name="name",
         ),
+        migrations.AlterUniqueTogether(
+            name="paymentmethod",
+            unique_together={("provider", "method")},
+        ),
         migrations.AddField(
             model_name="paymentmethod",
             name="allowed_countries",
@@ -117,10 +121,6 @@ class Migration(migrations.Migration):
             index=models.Index(
                 fields=["is_active"], name="payment_met_is_acti_395fa6_idx"
             ),
-        ),
-        migrations.AlterUniqueTogether(
-            name="paymentmethod",
-            unique_together={("provider", "method")},
         ),
         migrations.RemoveField(
             model_name="paymentmethod",

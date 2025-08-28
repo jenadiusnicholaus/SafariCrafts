@@ -7,6 +7,7 @@ from django.db import models
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
 from datetime import datetime, timedelta
 import uuid
+import logging
 
 from .models import Payment, PaymentMethod
 from orders.models import Order
@@ -16,6 +17,9 @@ from .serializers import (
     MobilePaymentResponseSerializer, PaymentStatusSerializer,
     PaymentSerializer
 )
+from .services.azam_pay import AzamPayService
+
+logger = logging.getLogger(__name__)
 
 
 class PaymentMethodsView(APIView):
@@ -110,19 +114,7 @@ class PaymentInitializationView(APIView):
                 )
                 
                 # Simulate payment provider integration
-                if payment_method['provider'] == 'stripe':
-                    response_data = {
-                        'payment_id': str(payment.id),
-                        'status': 'pending',
-                        'payment_url': f"https://checkout.stripe.com/session_{uuid.uuid4().hex[:8]}",
-                        'client_secret': f"pi_{uuid.uuid4().hex[:10]}_secret_{uuid.uuid4().hex[:6]}",
-                        'provider_data': {
-                            'session_id': f"cs_test_{uuid.uuid4().hex[:8]}",
-                            'publishable_key': 'pk_test_123'
-                        },
-                        'expires_at': (datetime.now() + timedelta(hours=1)).isoformat()
-                    }
-                elif payment_method['provider'] == 'paypal':
+                if payment_method['provider'] == 'paypal':
                     response_data = {
                         'payment_id': str(payment.id),
                         'status': 'pending',
@@ -132,12 +124,33 @@ class PaymentInitializationView(APIView):
                         },
                         'expires_at': (datetime.now() + timedelta(hours=1)).isoformat()
                     }
+                elif payment_method['provider'] == 'azampay':
+                    # For Azam Pay, redirect to mobile payment for most methods
+                    if payment_method['method'] in ['mpesa', 'airtel_money', 'tigo_pesa']:
+                        response_data = {
+                            'payment_id': str(payment.id),
+                            'status': 'pending',
+                            'message': 'Use mobile payment endpoint for mobile money payments',
+                            'redirect_to': 'mobile_payment_endpoint'
+                        }
+                    else:
+                        # For bank transfers or other Azam Pay methods
+                        response_data = {
+                            'payment_id': str(payment.id),
+                            'status': 'pending',
+                            'payment_url': f"https://azampay.co.tz/checkout/{uuid.uuid4().hex[:16]}",
+                            'provider_data': {
+                                'session_id': f"azam_{uuid.uuid4().hex[:8]}",
+                                'reference': f"AZ{uuid.uuid4().hex[:8].upper()}"
+                            },
+                            'expires_at': (datetime.now() + timedelta(hours=1)).isoformat()
+                        }
                 else:
-                    # For mobile money, we'll handle it in the mobile payment endpoint
+                    # For other providers
                     response_data = {
                         'payment_id': str(payment.id),
                         'status': 'pending',
-                        'message': 'Use mobile payment endpoint for mobile money payments'
+                        'message': 'Payment method not yet implemented'
                     }
                 
                 return Response(response_data)
@@ -189,24 +202,69 @@ class MobilePaymentView(APIView):
                     }
                 )
                 
-                # Update status to processing
-                payment.status = 'processing'
-                payment.save()
-                
-                # Simulate mobile money provider integration
-                provider_ref = f"MP{uuid.uuid4().hex[:8].upper()}"
-                
-                response_data = {
-                    'payment_id': str(payment.id),
-                    'status': 'processing',
-                    'message': f"Payment request sent to your phone. Please check your {payment_method['method'].replace('_', '-').title()} and enter your PIN to complete the payment.",
-                    'reference': provider_ref,
-                    'instructions': f"Enter your {payment_method['method'].replace('_', '-').title()} PIN when prompted on your phone",
-                    'timeout': 300,
-                    'status_check_url': f"/api/v1/payments/{payment.id}/status/"
-                }
-                
-                return Response(response_data)
+                # Process payment through Azam Pay if it's an azampay provider
+                if payment_method['provider'] == 'azampay':
+                    try:
+                        azam_pay = AzamPayService()
+                        
+                        payment_data = {
+                            'method': payment_method['method'],
+                            'phone_number': phone_number,
+                            'amount': float(order.total_amount),
+                            'external_id': str(payment.id),
+                        }
+                        
+                        # Process payment through Azam Pay
+                        azam_response = azam_pay.process_payment(payment_data)
+                        
+                        # Update payment status
+                        payment.status = 'processing'
+                        payment.provider_data = azam_response
+                        payment.save()
+                        
+                        # Extract transaction ID if available
+                        transaction_id = azam_response.get('transactionId') or azam_response.get('reference')
+                        
+                        response_data = {
+                            'payment_id': str(payment.id),
+                            'status': 'processing',
+                            'message': f"Payment request sent to your phone ({phone_number}). Please check your {payment_method['method'].replace('_', '-').title()} and enter your PIN to complete the payment.",
+                            'reference': transaction_id or f"AZ{uuid.uuid4().hex[:8].upper()}",
+                            'instructions': f"Enter your {payment_method['method'].replace('_', '-').title()} PIN when prompted on your phone",
+                            'timeout': 300,
+                            'status_check_url': f"/api/v1/payments/{payment.id}/status/"
+                        }
+                        
+                        return Response(response_data)
+                        
+                    except Exception as e:
+                        logger.error(f"Azam Pay payment failed: {e}")
+                        payment.status = 'failed'
+                        payment.failure_reason = str(e)
+                        payment.save()
+                        
+                        return Response(
+                            {"error": f"Payment processing failed: {str(e)}"},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                else:
+                    # For other providers (like PayPal), use the existing logic
+                    payment.status = 'processing'
+                    payment.save()
+                    
+                    provider_ref = f"MP{uuid.uuid4().hex[:8].upper()}"
+                    
+                    response_data = {
+                        'payment_id': str(payment.id),
+                        'status': 'processing',
+                        'message': f"Payment request sent to your phone. Please check your {payment_method['method'].replace('_', '-').title()} and enter your PIN to complete the payment.",
+                        'reference': provider_ref,
+                        'instructions': f"Enter your {payment_method['method'].replace('_', '-').title()} PIN when prompted on your phone",
+                        'timeout': 300,
+                        'status_check_url': f"/api/v1/payments/{payment.id}/status/"
+                    }
+                    
+                    return Response(response_data)
                 
             except Order.DoesNotExist:
                 return Response(

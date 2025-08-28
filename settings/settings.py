@@ -301,3 +301,12 @@ INFOBIP_BASE_URL = config('INFOBIP_BASE_URL', default='https://api.infobip.com')
 
 # AI Configuration
 DEEPSEEK_API_KEY = config("DEEPSEEK_API_KEY", default="no_api_key")
+
+
+# AZAM PAY
+AZAM_PAY_AUTH = config("AZAM_PAY_AUTH", default="no_auth")
+AZAM_PAY_CHECKOUT_URL = config("AZAM_PAY_CHECKOUT_URL", default="no_checkout_url")
+AZAM_PAY_APP_NAME = config("AZAM_PAY_APP_NAME", default="no_app_name")
+AZAM_PAY_CLIENT_ID = config("AZAM_PAY_CLIENT_ID", default="no_client_id")
+AZAM_PAY_CLIENT_SECRET = config("AZAM_PAY_CLIENT_SECRET", default="no_client_secret")
+TOKEN = config("TOKEN", default="no_token")

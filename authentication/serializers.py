@@ -1,7 +1,9 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
-from .models import User, Address
+from django.utils import timezone
+from datetime import datetime
+from .models import User, Address, AzamPayAuthToken
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
@@ -129,4 +131,35 @@ class PasswordChangeSerializer(serializers.Serializer):
         user = self.context['request'].user
         user.set_password(self.validated_data['new_password'])
         user.save()
+
+
+class AzamPayAuthSerializer(serializers.ModelSerializer):
+    """Azam Pay authentication token serializer"""
+    
+    expires_in = serializers.CharField(write_only=True)
+    
+    class Meta:
+        model = AzamPayAuthToken
+        fields = ('access_token', 'refresh_token', 'token_type', 'expires_in')
+    
+    def create(self, validated_data):
+        # Convert expire timestamp to datetime
+        expire_timestamp = validated_data.pop('expires_in')
+        
+        if isinstance(expire_timestamp, str):
+            # If it's a string timestamp, convert to datetime
+            try:
+                expire_datetime = datetime.fromtimestamp(int(expire_timestamp), tz=timezone.get_current_timezone())
+            except (ValueError, TypeError):
+                # If it's already a datetime string, parse it
+                expire_datetime = datetime.fromisoformat(expire_timestamp.replace('Z', '+00:00'))
+        else:
+            expire_datetime = expire_timestamp
+        
+        validated_data['expires_in'] = expire_datetime
+        
+        # Delete old tokens to keep only the latest one
+        AzamPayAuthToken.objects.all().delete()
+        
+        return super().create(validated_data)
         return user

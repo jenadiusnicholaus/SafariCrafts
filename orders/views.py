@@ -37,6 +37,7 @@ class OrderCreateView(APIView):
     )
     def post(self, request):
         serializer = OrderCreateSerializer(data=request.data)
+        print(request.data)
         if serializer.is_valid():
             shipping_address = serializer.validated_data['shipping_address']
             billing_address = serializer.validated_data['billing_address']
